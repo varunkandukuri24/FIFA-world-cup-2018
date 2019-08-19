@@ -9,3 +9,4 @@
 *.Rdx   binary
 *.Rmd	text
 *.R  	text
+*.html linguist-language=R
