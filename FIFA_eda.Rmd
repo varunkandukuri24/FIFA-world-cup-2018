@@ -1,6 +1,6 @@
 ---
-title: "R Notebook"
-output: html_notebook
+title: "FIFA World Cup 2018: An exploration"
+output: rmarkdown::github_document
 ---
 
 This project is for me to demonstrate what I have learnt in R so far in the 'Data analyst using R' path of Dataquest (upto intermediate programming in R). The techniques used to teach R is great for beginners. Nevertheless, they are quite rudimentary. 
