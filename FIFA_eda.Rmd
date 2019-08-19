@@ -1,0 +1,242 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This project is for me to demonstrate what I have learnt in R so far in the 'Data analyst using R' path of Dataquest (upto intermediate programming in R). The techniques used to teach R is great for beginners. Nevertheless, they are quite rudimentary. 
+
+But, the questions that are explored are quite interesiting, and my objective is to google new methods to make the task easier. For techniques that I haven't gotten to yet but find from the internet, I will post the links to which I referred. 
+
+The dataset used in the course was the 2014 FIFA world cup data by FiveThirtyEight. (scores.csv)
+
+Link: https://www.kaggle.com/fivethirtyeight/world-cup
+
+I am going to use the 2018 FIFA world cup data instead. (Cup.Russia.Matches.csv)
+
+Link: https://www.kaggle.com/jsppimentel99/coparussiajogos#Cup.Russia.Teams.csv
+
+Compared to the 2014 world cup dataset the 2018 dataset has 2 additional
+relevant attributes that we will use in our analysis:-
+
+1) `Stage` - Indicates at what stage/level of the tournament the match was played. Eg: Group A, Semi-finals etc.
+
+2) `Attendance` - Denotes the number of people who attended that match at the stadium.
+
+
+```{r}
+library(readr)
+library(dplyr)
+library(stringr)
+
+
+original_dataset <- read_csv("C:/RP/datasets/scores.csv")
+original_dataset
+dataset <- read_csv("C:/RP/datasets/2018_wc.csv")
+dataset
+```
+
+We notice that unlike in the scores.csv file, our match date and time have been combined into a single attribute `Datetime (Brazil)` .
+Moreover, this attribute contains dirty, irrelevant characters which need to be expunged.
+
+The course has taught me how to split a particular character variable using str_split() for the stringr package. I shall combine that with a couple of functions I found in the documentation to create 3 new variables:-
+
+* `match_day`
+* `match_month`
+* `match_time`
+
+```{r}
+
+#The pattern being replaced below displays itself as <U+FFFD>-<U+FFFD> when
+#previewed.
+date <- str_replace(dataset$`Datetime (Brazil)`,'�-�',' - ')
+date <- str_remove(date,'de')
+
+dataset <- dataset %>% mutate(temp_dates = date)
+dataset
+
+match_matrix <- str_split(dataset$temp_dates,' ',simplify = TRUE)
+match_matrix
+
+#Avoiding a vector for year since we know all matches took place in 2018.
+match_day <- match_matrix[,3]
+match_month <- match_matrix[,5]
+match_time <- match_matrix[,1]
+
+dataset <- dataset %>% mutate(match_day = match_day,match_month = match_month,match_time = match_time)
+
+#We now drop the temp_dates column since we no longer need it.
+dataset <- dataset %>% select(-temp_dates)
+dataset
+```
+
+
+**Question 1: Does a home team advantage really exist?**
+
+Original(course) solution: Create a new vector with values 'Home team won', 'Home team lost', or 'tie' and append it to our data frame.
+
+Using: if-else, for loops, if-else() vectorized function.
+
+My modification:- 
+
+* Create the same vector but with labels 'Home team', 'Away team', and 'Draw'.
+
+  Using: user-defined function, functional (map2()).
+  
+* Create a bar graph of the proportion of home wins, away wins, and ties.
+
+  Using: groupby(), summarize(), and ggplot()
+  
+  Reference: http://www.sthda.com/english/wiki/ggplot2-barplots-quick-start-guide-r-software-and-data-visualization
+
+```{r}
+
+match_result <- function(x,y)
+{
+  if (x > y)
+  {
+    return('Home team')
+  }
+  else if (x == y)
+  {
+    return('Draw')
+  }
+  else
+  {
+    return('Away team')
+  }
+}
+
+library(purrr)
+
+who_won <- map2_chr(dataset$`Home Team Goals`,dataset$`Away Team Goals`,match_result) 
+
+dataset <- dataset %>% mutate(match_winner = who_won)
+
+temp_ds <- dataset %>% group_by(match_winner) %>% summarise(Percentage_won = round(((n()/nrow(dataset)) * 100),digits = 0))
+temp_ds
+
+library(ggplot2)
+
+ggplot(data = temp_ds) + aes(x = match_winner,y = Percentage_won,fill = match_winner) + geom_bar(stat = 'identity',width = 0.3) + labs(title = 'Who won the most matches: Home team or away?',x = 'Match Result',y = 'Percentage of matches won (%)') + theme_minimal()
+
+```
+
+While home team vs. away team might make sense in traditional club football, there are little to no tangible advantages in a neutral-ground tournament such as the FIFA world cup. It could perhaps affect the number of seats being allocated for the teams' fans. Since we do not possess such data, let's try and answer the home team advantage in a way it makes sense.
+
+**Question 2: Did the host team (Russia) have a home ground advantage?**
+
+(Not asked in the course)
+
+My intent is to answer this question by measuring the total goals scored by every team and check if Russia falls in the top five teams at least.
+
+I shall create two data frames and then combine them using natural join.
+
+Reference: http://www.datasciencemadesimple.com/join-in-r-merge-in-r/
+
+```{r}
+home_tibble <- dataset %>% group_by(Team = `Home Team`) %>% summarise(Home_goals = sum(`Home Team Goals`))
+home_tibble
+
+away_tibble <- dataset %>% group_by(Team = `Away Team`) %>% summarise(Away_goals = sum(`Away Team Goals`))
+away_tibble
+
+goals_by_country <- merge(x = home_tibble,y = away_tibble,by = "Team") %>% mutate(Total_goals = Home_goals + Away_goals) %>% select(Team,Total_goals) %>% arrange(desc(Total_goals))
+#Note: by enclosed in double-quotes.
+goals_by_country
+
+top_5 <- goals_by_country[1:5,]
+top_5
+
+ggplot(data = top_5) + aes(x = Team,y = Total_goals,fill = Team) + geom_bar(stat = 'identity',width = 0.3) + labs(title = 'Top goals scoring teams of the tournament',x = 'Team name',y = 'Goals scored') + theme_minimal()
+```
+
+Clearly, Russia scored a significant amount of goals despite being a lower ranked team than some of the top contenders like Brazil, Spain, Argentina etc.
+
+**Question 3: How many goals were scored by the top 5 countires at each stage in which they played?**
+
+(Not asked in course)
+
+Let me first extract details of the the matches in which the top 5 teams played. 
+Reference(s):-
+
+1. http://www.datasciencemadesimple.com/in-operator-in-r/
+
+
+2. https://stackoverflow.com/questions/31461357/sum-of-two-columns-of-data-frame-with-na-values
+
+I have also performed a full-outer join mentioned in the previous chunk's reference.
+
+```{r}
+top_5_dataset <- dataset %>% filter(`Home Team` %in% top_5$Team | `Away Team` %in% top_5$Team)
+top_5_dataset
+
+#The reason I am including attendance is to avoid remaking the data frames to
+#answer the next question.
+group_home_tibble <- top_5_dataset %>% group_by(Team = `Home Team`,Stage = Stage,Attendance = Attendance) %>% summarise(Home_goals = sum(`Home Team Goals`)) %>% filter(Team %in% top_5$Team)
+group_home_tibble
+
+group_away_tibble <- top_5_dataset %>% group_by(Team = `Away Team`,Stage = Stage,Attendance = Attendance) %>% summarise(Away_goals = sum(`Away Team Goals`)) %>% filter(Team %in% top_5$Team)
+group_away_tibble
+
+group_goals_combined <- merge(x = group_home_tibble,y = group_away_tibble,by = c("Team","Stage","Attendance"),all = TRUE) 
+
+
+#Note: Alternate for mutate() ...
+group_goals_combined$Total_goals <- rowSums(group_goals_combined[,c("Home_goals","Away_goals")],na.rm = TRUE)
+group_goals_combined
+
+ggplot(data = group_goals_combined) + aes(x = Team,y = Total_goals,fill = Stage) + geom_bar(stat = 'identity',width = 0.3) + labs(title = 'Top goal scoring teams of the tournament',x = 'Team name',y = 'Goals scored (by group)') + theme_minimal() 
+
+```
+
+**Question 4: For the top 5 goal scoring teams, is there any correlation between the number of attendants and the number of goals scored?**
+
+(Not asked in the course)
+
+I will create a scatter plot to explore this correlation. Furthermore, I will split the scatterplot by country and depict each point by different shapes and colors for providing more detail.
+
+Reference(s):-
+
+1. http://www.sthda.com/english/wiki/ggplot2-scatter-plots-quick-start-guide-r-software-and-data-visualization
+
+2. http://www.sthda.com/english/wiki/ggplot2-point-shapes
+
+3. http://www.sthda.com/english/wiki/ggplot2-facet-split-a-plot-into-a-matrix-of-panels
+
+```{r}
+ggplot(data = group_goals_combined) + aes(x = Total_goals,y = Attendance) + geom_point() + labs(title = 'Top goal scoring teams of the tournament',x = 'Number of goals scored',y = 'Stadium attendance') + facet_wrap(~Team) + theme_minimal()
+```
+
+
+
+There seems to be no strongly positive relation for any country. Russia has a loosely positive relationship, which makes sense since there are likely to be a majority of Russian fans during the matches.
+
+Let's go down one level and see the stages in which the goals were scored.
+```{r}
+ggplot(data = group_goals_combined) + aes(x = Total_goals,y = Attendance, shape = Stage, color = Stage) + geom_point() + scale_shape_manual(values=c(0,1,2,3,4,7,8,9,10)) + labs(title = 'Top goal scoring teams of the tournament',x = 'Number of goals scored',y = 'Stadium attednance') + facet_wrap(~Team) + theme_minimal() 
+```
+
+
+
+We can infer the following:-
+
+1. All teams with the exception of France scored their highest goal tally in the group stages.
+
+2. Russia had their highest scoring match (5 goals) in the first match of the torunament which saw one of the highest attendance numbers.
+
+3. Croatia is the only team to have scored at least one goal in every match they played.
+
+4. England scored the highest number of goals in a single match (6).
+
+5. There is a suprisingly low attendance for Russia in their quarter final match. It raises the question for their loss: could it have anything to do with a lack of crowd support?
+
+
+**That's it for the exploratory analysis using the techniques I've learnt from the first two modules. Thanks for reading!**
+
+
+
+
+
+
+
+
